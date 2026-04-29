@@ -1,6 +1,6 @@
 ---
 name: gig-finder
-description: Find indie / small-venue concerts near a location within a date range, matched against the user's real listening history (Last.fm + Spotify) and expanded with similar artists. Triggers on requests like "find me gigs / shows / concerts in <place> from <date> to <date>", "what's playing in <city> next month", "refresh my taste profile", or "refresh venues for <city>".
+description: Find indie / small-venue concerts near a location within a date range, matched against the user's real listening history (Last.fm + Spotify) and expanded with similar artists. Triggers on requests like "find me gigs / shows / concerts in <place> from <date> to <date>", "what's playing in <city> next month", "refresh my taste profile", "show me my taste profile", or "refresh venues for <city>".
 ---
 
 # gig-finder
@@ -19,7 +19,8 @@ Inspect the user's request and pick exactly one mode:
 |---|---|
 | "find / list me gigs / shows / concerts in <place>" + date range | `find-gigs` |
 | "what's playing in <place> [during X]" | `find-gigs` |
-| "refresh my taste profile" / "rebuild taste" / "update my music tastes" | `refresh-taste` |
+| "show me my taste profile" / "what does my taste look like" / "describe my music taste" / "who's in my taste profile" | `show-taste` |
+| "refresh my taste profile" / "rebuild taste" / "update my music tastes" / "remine my listening" | `refresh-taste` |
 | "refresh venues for <city>" / "rediscover venues in <city>" | `refresh-venues` |
 
 If the user asks something ambiguous, ask one clarifying question before dispatching.
@@ -172,6 +173,39 @@ Format as a plain markdown list, sorted as given (date ascending). Each entry:
 - If `events` is empty, say so plainly and suggest either widening the date range, refreshing venues, or refreshing the taste profile.
 
 End with a one-line summary of `stats` (e.g. "Scanned 18 venues → 47 events in window → 12 matched your taste").
+
+---
+
+## Mode: `show-taste`
+
+Read the file at `~/.gigfinder/taste.json` directly with the Read tool. If it doesn't exist, tell the user to run `refresh my taste profile` first.
+
+When it exists, render a human-readable summary covering:
+
+1. **Header line** — when the profile was last updated (relative time, e.g. "2 hours ago" / "3 days ago"), and a one-line stats summary: `<total_artists> artists across <total_genres> genres, mined from Last.fm + Spotify in <elapsed_seconds>s`.
+
+2. **Top 15 artists** — from `artists[]` (already sorted by score). For each: rank, name, score, Last.fm playcount if > 0, top tags (first 3 from `tags`). Format like:
+   ```
+    1. Sports Team (score 91.7, 1159 plays) — post-punk, indie rock, art punk
+    2. The Strokes (score 76.8, 367 plays) — indie rock, indie, rock
+   ```
+
+3. **Top 15 genres** — from `genres[]` (sorted by weight). Format like:
+   ```
+    1. indie rock (weight 1645)
+    2. indie (weight 1252)
+   ```
+
+4. **Source breakdown** — count how many artists have each source label across `artists[].sources[]`. Output the most informative ones:
+   - `lastfm_top_overall`, `lastfm_top_12m`, `lastfm_top_1m` — Last.fm tier counts
+   - `lastfm_loved` — explicitly loved on Last.fm
+   - `spotify_followed` — explicitly followed on Spotify
+   - `spotify_liked` — at least one liked song
+   - `spotify_playlist` — appears in at least one owned playlist
+
+5. **Freshness hint** — if the profile is older than 30 days, suggest running `refresh-taste`.
+
+Keep the whole output skimmable — don't dump the raw JSON, summarize. End with a one-line offer: "Want to refresh this, or run a `find-gigs` search?"
 
 ---
 
