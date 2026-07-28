@@ -172,7 +172,7 @@ The first search in a new city triggers venue discovery (Claude web-searches for
 
 ## How it works (one paragraph)
 
-`refresh-taste` aggregates Last.fm top artists, top tags, loved tracks, and recent plays with Spotify likes, follows, and owned playlists into a weighted artist score. `find-gigs` runs a small Python prelude (`prepare_search.py`) to validate inputs and geocode, then hands off to Claude to find ~20 indie venues for the city (cached 365 days), fetch each venue's calendar (cached 24h), and extract events. The events are piped into `finalize_search.py`, which builds the artist universe (taste profile + Last.fm `artist.getSimilar` for the top ~30 artists), filters events to those with matching artists, tags each with the strongest signal (`Top favorite` / `Loved` / `Followed` / `Similar to X`), and sorts by date.
+`refresh-taste` aggregates Last.fm top artists, top tags, loved tracks, and recent plays with Spotify likes, follows, and owned playlists into a weighted artist score. `find-gigs` runs a small Python prelude (`prepare_search.py`) to validate inputs and geocode, then hands off to Claude to find ~20 indie venues for the city (cached 365 days), fetch each venue's calendar (cached 24h), and extract events. The events are piped into `finalize_search.py`, which builds the artist universe (taste profile + Last.fm `artist.getSimilar` for the top ~30 artists), filters events to those with matching artists, tags each with the strongest signal (`Top favorite` / `Loved` / `Followed` / `Similar to X`), and sorts by date. After recommending shows, Claude can offer a **Mizzix sampler**: `build_sampler.py` takes a curated list of new-to-you artists, grabs up to 2 tracks each, and clears/refills a single rolling Spotify playlist named `Mizzix` so you can preview them before buying a ticket.
 
 ## Limitations (honest)
 
@@ -200,6 +200,7 @@ gig-finder/
 │   ├── refresh_taste.py    # mines Last.fm + Spotify
 │   ├── prepare_search.py   # validates input, geocodes
 │   ├── finalize_search.py  # filters/tags/sorts Claude-extracted events
+│   ├── build_sampler.py    # builds the rolling "Mizzix" sampler playlist
 │   └── cache_io.py         # cache path/freshness helper for SKILL.md
 └── lib/
     ├── lastfm.py / spotify.py / musicbrainz.py / geocode.py

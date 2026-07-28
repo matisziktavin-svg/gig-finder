@@ -22,6 +22,7 @@ Inspect the user's request and pick exactly one mode:
 | "show me my taste profile" / "what does my taste look like" / "describe my music taste" / "who's in my taste profile" | `show-taste` |
 | "refresh my taste profile" / "rebuild taste" / "update my music tastes" / "remine my listening" | `refresh-taste` |
 | "refresh venues for <city>" / "rediscover venues in <city>" | `refresh-venues` |
+| "make / build a playlist / sampler of those [artists]" (after a gig search) | `find-gigs` → Step 7 |
 
 If the user asks something ambiguous, ask one clarifying question before dispatching.
 
@@ -111,8 +112,9 @@ For each venue (cap at 20), in order:
    ```
    This returns `{path, exists, age_days, stale}`. If `stale: false` → use the cached file (Read it, parse the JSON `events` array).
 
-3. If stale, **WebFetch** the calendar page with a prompt that asks to extract upcoming events as JSON. Tell the model:
-   - Look first for structured data: `<script type="application/ld+json">` with `@type: MusicEvent` / `Event`, or linked iCal / RSS feeds in `<link rel>`.
+3. If stale, fetch the calendar page and extract upcoming events as JSON.
+   - **Fetch order:** try **WebFetch** first (free). Venue sites are frequently JS-rendered (Squarespace, Dice, Bandsintown/Songkick embeds) or bot-protected, so if WebFetch returns an empty shell, a login wall, or obviously no event list, **fall back to `firecrawl_scrape`** (`formats: ["markdown"]`, `only_main_content: true`) — it renders JS and returns clean Markdown. Firecrawl costs a credit per scrape (free tier ~1000/month), so only use it when WebFetch actually fails, not by default. If the `firecrawl` MCP isn't connected, stay on WebFetch.
+   - When extracting, look first for structured data: `<script type="application/ld+json">` with `@type: MusicEvent` / `Event`, or linked iCal / RSS feeds in `<link rel>`.
    - Otherwise, parse the visible event list / calendar.
    - Return a JSON array of:
      ```json
@@ -173,6 +175,40 @@ Format as a plain markdown list, sorted as given (date ascending). Each entry:
 - If `events` is empty, say so plainly and suggest either widening the date range, refreshing venues, or refreshing the taste profile.
 
 End with a one-line summary of `stats` (e.g. "Scanned 18 venues → 47 events in window → 12 matched your taste").
+
+### Step 7 — offer a "Mizzix sampler" playlist
+
+Whenever you've just surfaced artists the user likely **hasn't listened to** — whether they came from the automated Tier-2 (`Similar to …`) matches **or** your own manual picks when the scorer returned little/nothing (a big city where venue calendars didn't scrape is the common case) — end with a short offer:
+
+> "Want me to drop a sampler of these into your **Mizzix** playlist so you can hear them before deciding on the show?"
+
+Only offer when there's at least one genuinely new-to-the-user artist. Skip the offer if every match is already a favorite.
+
+If the user says yes (or asks directly, e.g. "make a playlist of those"):
+
+1. **Curate to real, Spotify-searchable recording artists.** This is your judgment call — the script trusts whatever names you hand it:
+   - **Keep** touring/recording acts the user probably hasn't heard.
+   - **Drop** things that aren't a recording artist you can sample: DJ/club nights, theme nights ("Dark 80s New Wave Nite"), open decks, comedy, etc.
+   - **Tribute / covers nights**: substitute the *source* artist only if it makes sense (a Smiths tribute → `The Smiths`) — and only if the user doesn't already know them. Otherwise drop it.
+   - Don't bother filtering out artists the user already listens to; the script skips anything already in their library/follows.
+2. **Write the curated list** with the Write tool to a temp JSON file — an array of objects `{"name": "...", "show": "Sat 6/7 · 8pm @ The Regent"}` (the `show` string is optional context shown in the summary):
+   ```json
+   [
+     {"name": "Tigers Jaw", "show": "Sat 6/7 · 8pm @ The Regent"},
+     {"name": "Jhariah", "show": "Wed 6/10 @ Teragram Ballroom"}
+   ]
+   ```
+3. **Run the builder** (add `--dry-run` first if you want to preview without touching Spotify):
+   ```bash
+   uv run python scripts/build_sampler.py --input <temp-file>
+   ```
+4. **Relay the script's summary** (what it added, skipped as already-known, or couldn't find). If it prints the expired-auth message, tell the user their Spotify login expired and to run `spotify-mcp --auth`, then retry.
+
+Behavior to know so you set expectations correctly:
+- **One rolling playlist named exactly `Mizzix`.** Each run **replaces** its contents — it's a fresh sampler, not a growing archive. (Spotify's API can't file it into a folder; it lives at the top level.)
+- **At most 2 tracks per artist**, so it stays a quick taste-test.
+- If your curated list comes out **empty**, say so and don't run the script.
+- The script prefers each artist's canonical top tracks, but this Spotify app is in development mode where that endpoint is blocked, so it automatically falls back to a popularity-ranked track search. Picks are still representative; just don't promise "official top 10" ordering.
 
 ---
 
