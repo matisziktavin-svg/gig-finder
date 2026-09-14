@@ -157,6 +157,11 @@ cat /tmp/gigfinder_events.json | uv run python scripts/finalize_search.py \
 
 The output JSON has `stats` and `events` (filtered, tagged, sorted). The `events` array is what to render.
 
+Each event carries a `tier`:
+- **Tier 1** — a taste-profile favorite is in the lineup (artists the user actually listens to).
+- **Tier 2** — a Last.fm "similar artist" of a favorite (adjacent, usually bigger names).
+- **Tier 3 / Discovery** — the user has *not* heard this act, but it passed the genre + size gate: an indie-set genre tag AND Last.fm listeners in [1k, 200k]. These are small local acts you'd otherwise skip (e.g. The 4411). `primary_tag` is `"Discovery"` and `secondary_tags` carry the matched genre + a rough listener count. Toggle with `--no-discovery`; adjust the ceiling with `--discovery-cap N`.
+
 ### Step 6 — render to the user
 
 Format as a plain markdown list, sorted as given (date ascending). Each entry:
@@ -172,13 +177,14 @@ Format as a plain markdown list, sorted as given (date ascending). Each entry:
 - Tags from `primary_tag` and `secondary_tags`, joined with ` · ` and wrapped in `[…]`.
 - Tickets line only if `ticket_url` is present.
 - If multiple matched artists in the lineup, mention them after the headliner: `*Headliner*, with Other Match`.
+- **Discovery (Tier 3) events** render the same way — `primary_tag` is `"Discovery"` and `secondary_tags` carry the genre + rough listener count, so they read like `[Discovery · Genre: indie rock · ~12,000 listeners]`. These are new-to-the-user acts; consider grouping them under a short "New to you" subheading below the taste matches if there are several, so the user can tell them apart from artists they already know.
 - If `events` is empty, say so plainly and suggest either widening the date range, refreshing venues, or refreshing the taste profile.
 
-End with a one-line summary of `stats` (e.g. "Scanned 18 venues → 47 events in window → 12 matched your taste").
+End with a one-line summary of `stats` (e.g. "Scanned 18 venues → 47 events in window → 12 matched your taste, 5 discovery picks"). `stats` carries `tier1_count`, `tier2_count`, and `tier3_count` (discovery) separately — surface the discovery count so the user knows how many are unheard acts.
 
 ### Step 7 — offer a "Mizzix sampler" playlist
 
-Whenever you've just surfaced artists the user likely **hasn't listened to** — whether they came from the automated Tier-2 (`Similar to …`) matches **or** your own manual picks when the scorer returned little/nothing (a big city where venue calendars didn't scrape is the common case) — end with a short offer:
+Whenever you've just surfaced artists the user likely **hasn't listened to** — whether they came from the automated Tier-2 (`Similar to …`) matches, the Tier-3 **Discovery** picks (unheard local acts that passed the genre + size gate — these are new-to-the-user *by definition*), **or** your own manual picks when the scorer returned little/nothing (a big city where venue calendars didn't scrape is the common case) — end with a short offer:
 
 > "Want me to drop a sampler of these into your **Mizzix** playlist so you can hear them before deciding on the show?"
 
@@ -280,6 +286,7 @@ If the user said `refresh venues for <city>` without supplying dates, ask for th
 | Per-venue calendar | 24 hours | `~/.gigfinder/calendars/<sha256>.json` |
 | Geocode | forever | `~/.gigfinder/geocode.cache.json` |
 | Last.fm similar artists | 30 days | `~/.gigfinder/similar.json` |
+| Last.fm artist meta (listeners + tags, for Tier-3 discovery) | 60 days | `~/.gigfinder/artist_meta.json` |
 
 The user can manually delete any of these to force a refresh. `refresh-venues` and `refresh-taste` are the supported commands.
 

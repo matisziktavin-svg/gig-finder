@@ -47,6 +47,11 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--from", dest="date_from", required=True)
     p.add_argument("--to", dest="date_to", required=True)
+    p.add_argument("--no-discovery", dest="discovery", action="store_false",
+                   help="Skip the Tier-3 genre+size discovery pass over unheard local acts.")
+    p.add_argument("--discovery-cap", dest="discovery_cap", type=int,
+                   default=ranking.DISCOVERY_LISTENER_CAP,
+                   help="Max Last.fm listeners for a discovery pick (default 200000).")
     args = p.parse_args()
     df = _parse_date(args.date_from)
     dt = _parse_date(args.date_to)
@@ -75,6 +80,7 @@ def main() -> int:
     universe = ranking.build_artist_universe(taste)
 
     matched: list[dict] = []
+    unmatched_in_window: list[dict] = []
     tier1_count = 0
     tier2_count = 0
     for ev in input_events:
@@ -88,6 +94,7 @@ def main() -> int:
 
         matches = ranking.match_event(ev, universe)
         if not matches:
+            unmatched_in_window.append(ev)
             continue
         primary, secondary = ranking.tag_event(matches, taste)
         out = {
@@ -100,14 +107,22 @@ def main() -> int:
             "primary_tag": primary,
             "secondary_tags": secondary,
             "ticket_url": ev.get("ticket_url"),
+            "tier": 1 if any(m["tier"] == 1 for m in matches) else 2,
         }
         matched.append(out)
-        if any(m["tier"] == 1 for m in matches):
+        if out["tier"] == 1:
             tier1_count += 1
         else:
             tier2_count += 1
 
-    matched = ranking.sort_events_by_date(matched)
+    # Tier 3: genre + size discovery over shows that matched nothing.
+    discovery: list[dict] = []
+    if args.discovery:
+        discovery = ranking.discover_from_events(
+            unmatched_in_window, universe, listener_cap=args.discovery_cap,
+        )
+
+    all_events = ranking.sort_events_by_date(matched + discovery)
 
     print(json.dumps({
         "ok": True,
@@ -116,9 +131,10 @@ def main() -> int:
             "matched_events": len(matched),
             "tier1_count": tier1_count,
             "tier2_count": tier2_count,
+            "tier3_count": len(discovery),
             "universe_size": len(universe),
         },
-        "events": matched,
+        "events": all_events,
     }, indent=2, ensure_ascii=False))
     return 0
 

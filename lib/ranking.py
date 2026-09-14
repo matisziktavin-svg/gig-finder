@@ -19,6 +19,58 @@ from lib import cache, lastfm
 SIMILAR_CACHE_PATH = cache.CACHE_DIR / "similar.json"
 SIMILAR_TTL_DAYS = 30
 
+# Cache for per-artist size + tag lookups, feeding the Tier-3 discovery pass.
+# Listeners/tags barely move, so a long TTL keeps repeat scans near-free.
+META_CACHE_PATH = cache.CACHE_DIR / "artist_meta.json"
+META_TTL_DAYS = 60
+
+# Discovery tier: surface local acts Tavin has NOT heard, but only when their
+# genre tags match core taste AND they sit under this listener cap. Calibrated
+# 2026-09-14 — his likes cluster < ~135k (Sports Team, his #1, is 146k), while
+# the too-big Tier-2 similars start at 1.4M+. 200k leaves headroom below the gap;
+# bigger acts are already covered by the Tier-2 similar-artist expansion.
+DISCOVERY_LISTENER_CAP = 200_000
+
+# Below this, an artist is treated as noise (misspellings, non-entities with a
+# handful of scrobbles) rather than a genuine small act worth surfacing.
+DISCOVERY_LISTENER_FLOOR = 1_000
+
+# Tighter inclusion set for discovery ONLY. The broad tags in _GENRE_SAFE_TAGS
+# (rock, alternative, alternative rock, classic rock, new wave) are correct for
+# *saving* a borderline artist from exclusion, but too permissive for *finding*
+# unheard acts — they drag in roots-rock, emo, and post-hardcore. Discovery
+# restricts to the indie-specific tags. (Calibrated 2026-09-14 against the STL
+# September scan: broad tags produced ~half the shows as false positives.)
+_DISCOVERY_GENRE_TAGS: frozenset[str] = frozenset({
+    "indie", "indie rock", "indie pop", "dream pop", "jangle pop",
+    "garage rock", "shoegaze", "post-punk", "art punk", "power pop",
+    "math rock", "britpop", "lo-fi",
+})
+
+# Tags that save an artist from genre exclusion — crossover genres adjacent to
+# Tavin's core taste. An artist tagged with both "punk" and "indie rock" stays in.
+_GENRE_SAFE_TAGS: frozenset[str] = frozenset({
+    "rock", "indie", "indie rock", "alternative", "alternative rock",
+    "post-punk", "art punk", "new wave", "indie pop", "dream pop",
+    "garage rock", "shoegaze", "math rock", "classic rock", "britpop",
+    "lo-fi", "jangle pop", "power pop",
+})
+
+
+def _is_genre_excluded(artist: dict, excluded: frozenset[str]) -> bool:
+    """Return True if this artist should be filtered by genre preferences.
+
+    Only excludes when the artist has an excluded tag AND none of their tags
+    are 'safe' crossover genres. This keeps post-punk / art-punk artists
+    (e.g. Sports Team, The Strokes) while dropping pure-punk acts.
+    """
+    if not excluded:
+        return False
+    tags_lower = frozenset(t.lower() for t in artist.get("tags", []))
+    if not tags_lower & excluded:
+        return False  # no excluded tags — keep
+    return not bool(tags_lower & _GENRE_SAFE_TAGS)  # excluded unless a safe tag is present
+
 
 def normalize_artist_name(name: str) -> str:
     """Match key for artist names across data sources."""
@@ -73,12 +125,19 @@ def build_artist_universe(
 
     Each entry: {name, name_normalized, score, tier, source_label, sources[]}
     """
+    preferences = taste.get("preferences", {})
+    excluded_genres = frozenset(
+        g.lower() for g in preferences.get("genre_exclusions", [])
+    )
+
     universe: dict[str, dict] = {}
 
-    # Tier 1: anyone in the taste profile above the score floor
+    # Tier 1: anyone in the taste profile above the score floor, minus excluded genres
     for a in taste.get("artists", []):
         if a["score"] < favorite_score_floor:
             continue
+        if _is_genre_excluded(a, excluded_genres):
+            continue  # pure-punk artist with no rock/indie crossover — skip
         key = a["name_normalized"]
         universe[key] = {
             "name": a["name"],
@@ -123,6 +182,96 @@ def _favorite_label(a: dict) -> str:
     if "lastfm_top_overall" in s or "lastfm_top_12m" in s or "lastfm_top_1m" in s:
         return "Favorite"
     return "Library"
+
+
+# ── Tier 3: local genre-adjacent discovery ───────────────────────────────
+
+def _load_meta_cache() -> dict:
+    return cache.load_json(META_CACHE_PATH) or {}
+
+
+def _save_meta_cache(c: dict) -> None:
+    cache.save_json(META_CACHE_PATH, c)
+
+
+def _genre_hit(tags: list[str]) -> str | None:
+    """Return the first tag in the tighter discovery inclusion set, or None.
+    Same lowercase convention as _is_genre_excluded / _GENRE_SAFE_TAGS."""
+    for t in tags:
+        if t.lower() in _DISCOVERY_GENRE_TAGS:
+            return t
+    return None
+
+
+def discover_from_events(
+    events: list[dict],
+    universe: dict[str, dict],
+    listener_cap: int = DISCOVERY_LISTENER_CAP,
+    listener_floor: int = DISCOVERY_LISTENER_FLOOR,
+) -> list[dict]:
+    """Post-match pass over shows that matched NOTHING in the taste universe.
+
+    For each unheard artist on those lineups, fetch size + tags (cached) and
+    keep the artist only when BOTH gates pass: an indie-set genre tag AND
+    listeners in [listener_floor, listener_cap]. Artists with no Last.fm
+    presence carry no tags, so the genre gate filters them out automatically.
+
+    Returns events shaped like matched events, marked tier 3 / "Discovery".
+    """
+    meta_cache = _load_meta_cache()
+    dirty = False
+    out: list[dict] = []
+    now = time.time()
+
+    for ev in events:
+        picks: list[dict] = []
+        for raw in ev.get("artists") or []:
+            if not raw:
+                continue
+            key = normalize_artist_name(raw)
+            if key in universe:
+                continue  # already a Tier 1/2 match — not a discovery
+            entry = meta_cache.get(key)
+            fresh = entry and (now - entry.get("fetched_at", 0)) / 86400 < META_TTL_DAYS
+            if not fresh:
+                try:
+                    info = lastfm.get_artist_info(artist=raw)
+                except Exception:
+                    info = None
+                entry = {
+                    "fetched_at": now,
+                    "listeners": (info or {}).get("listeners", 0),
+                    "tags": (info or {}).get("tags", []),
+                    "name": (info or {}).get("name", raw),
+                }
+                meta_cache[key] = entry
+                dirty = True
+            listeners = entry.get("listeners", 0)
+            gtag = _genre_hit(entry.get("tags", []))
+            if gtag and listener_floor <= listeners <= listener_cap:
+                picks.append({"name": raw, "listeners": listeners, "genre": gtag})
+
+        if picks:
+            best = min(picks, key=lambda p: p["listeners"])  # smallest = most "discovery"
+            out.append({
+                "date": ev["date"],
+                "time": ev.get("time"),
+                "venue": ev.get("venue"),
+                "venue_url": ev.get("venue_url"),
+                "artists": ev.get("artists", []),
+                "matched_artists": [p["name"] for p in picks],
+                "primary_tag": "Discovery",
+                "secondary_tags": [
+                    f"Genre: {best['genre']}",
+                    f"~{best['listeners']:,} listeners",
+                ],
+                "ticket_url": ev.get("ticket_url"),
+                "tier": 3,
+            })
+
+    if dirty:
+        _save_meta_cache(meta_cache)
+    return out
 
 
 # ── Event matching + tagging ─────────────────────────────────────────────

@@ -137,6 +137,33 @@ def get_artist_tags(
             for t in tags[:limit]]
 
 
+def get_artist_info(
+    artist: str | None = None,
+    mbid: str | None = None,
+    tag_limit: int = 8,
+) -> dict:
+    """Return size signal (listeners/playcount) + top tags for an artist in one
+    call. `listeners` is the size proxy used to gate the discovery tier."""
+    if not artist and not mbid:
+        raise ValueError("Pass either artist or mbid.")
+    params: dict[str, Any] = {"autocorrect": 1}
+    if mbid:
+        params["mbid"] = mbid
+    if artist:
+        params["artist"] = artist
+    with httpx.Client() as c:
+        data = _call(c, "artist.getInfo", **params)
+    a = data.get("artist", {}) or {}
+    stats = a.get("stats", {}) or {}
+    tags = [t["name"] for t in (a.get("tags", {}) or {}).get("tag", []) or []]
+    return {
+        "name": a.get("name") or artist,
+        "listeners": int(stats.get("listeners", 0) or 0),
+        "playcount": int(stats.get("playcount", 0) or 0),
+        "tags": tags[:tag_limit],
+    }
+
+
 # ── smoke test ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
