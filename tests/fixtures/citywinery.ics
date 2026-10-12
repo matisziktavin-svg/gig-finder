@@ -1,0 +1,103 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+X-WR-CALNAME:City Winery Events
+X-WR-TIMEZONE:America/Chicago
+PRODID:adamgibbons/ics
+METHOD:PUBLISH
+X-PUBLISHED-TTL:PT1H
+BEGIN:VEVENT
+UID:69fce98fdfe71aa04fcde6f1
+SUMMARY:St. Louis October Vinofile VIP+ Pick-Up Party
+DTSTAMP:20261012T181608Z
+DTSTART;TZID=America/Chicago:20261014T180000
+DTEND;TZID=America/Chicago:20261014T200000
+DESCRIPTION:City Winery St. Louis presents our October Vinofile Plus Pick-U
+	p Party on October 14th from 6pm - 8pm! Exclusive to Vinofile Plus Members
+	\, guests enjoy a free bottle of wine each month\, carefully selected by o
+	ur Winemaker and tasty food pairings during the Pick-Up Party! Wine of the
+	 Month: 2024 Zinfandel. \nTicket URL: https://tickets.citywinery.com/event
+	/st-louis-october-vinofile-plus-pick-up-party-97l227
+URL:https://tickets.citywinery.com/event/st-louis-october-vinofile-plus-pic
+	k-up-party-97l227
+LOCATION:City Winery St. Louis\, 3730 Foundry Way\, Suite 158 (City Foundry
+	)\, St. Louis\, 63110\, US
+STATUS:TENTATIVE
+ORGANIZER;CN="City Winery":MAILTO:info@email.citywinery.com
+END:VEVENT
+BEGIN:VEVENT
+UID:69b4999f1f1cc6ec13083ed4
+SUMMARY:Keiko Matsui
+DTSTAMP:20261012T181608Z
+DTSTART;TZID=America/Chicago:20261014T193000
+DTEND;TZID=America/Chicago:20261014T235900
+DESCRIPTION:Celebrated Pianist\, Composer & Humanitarian Keiko Matsui Share
+	s Her Dream For Unity\, Serenity & Happiness on New Recording Euphoria “Th
+	rough prayer and my music\, I hope to be able to increase harmony on this 
+	planet.”- Keiko Matsui “This album is about the hope that we all carry ins
+	ide of us\,” shares internationally acclaimed pianist\, composer and human
+	itarian\, Keiko Matsui\, who has worked with everyone from Miles Davis\, S
+	tevie Wonder\, Bob James\, and Hugh Masekela. “I have this dream where we 
+	can each cherish our own happiness and learn to accept and care for one an
+	other.” This declaration is a tall order but if anyone can pull it off it’
+	s Keiko Matsui. There is a reason why the stunning\, soft-spoken\, and pet
+	ite powerhouse with such a commanding presence at the piano has amassed a 
+	devout following through the years. “When I tour around the world and witn
+	ess how my music cuts through our differences and connects everyone\, it m
+	akes me feel euphoric!” exclaims Keiko\, who has lent her voice to raise a
+	wareness for such causes as The Daniel Pearl and the Susan G. Komen Founda
+	tions. Keiko harnesses this joy on her anticipated new and 30th recording 
+	Euphoria (March 31\, 2023 on Shanachie Entertainment). She enlists an all-
+	star contingency of special guests including vocalist\, and daughter of Do
+	nny Hathaway\, Lalah Hathaway\, trumpeter Randy Brecker\, guitarist Mike S
+	tern\, saxophonist Kirk Whalum\, vibist Joel Ross\, harmonica player Grégo
+	ire Maret and pianist/arranger John Beasley. Keiko is also joined by her t
+	ouring band\, bassist Rico Belled\, guitarist JP Mourao and drummer Jimmy 
+	Branly\, who she credits for making the rigors of touring bearable. Euphor
+	ia is co-produced by Grammy nominated producer and manager Bud Harner\, wh
+	o also co-produced Keiko’s previous recording Echo\, as well as albums by 
+	David Benoit\, Jeff Golub\, and Lalah Hathaway\, among others. Euphoria pr
+	omises to be a watershed moment for Keiko as she has poured her heart and 
+	soul into this project and the result is an utterly inspiring and epic sta
+	tement. Keiko declares\, “At the core of this album is beauty\, strength\,
+	 energy\, love\, and hope. These are all the things in life that we need t
+	o move forward on a new path. This music is dedicated to a new era.” \nTic
+	ket URL: https://tickets.citywinery.com/event/keiko-matsui-k08i7h
+URL:https://tickets.citywinery.com/event/keiko-matsui-k08i7h
+LOCATION:City Winery St. Louis\, 3730 Foundry Way\, Suite 158 (City Foundry
+	)\, St. Louis\, 63110\, US
+STATUS:CONFIRMED
+ORGANIZER;CN="City Winery":MAILTO:info@email.citywinery.com
+END:VEVENT
+BEGIN:VEVENT
+UID:69b34ae0860f66c0f58bd9c5
+SUMMARY:Bob Schneider with support from Chris Trapper
+DTSTAMP:20261012T181608Z
+DTSTART;TZID=America/Chicago:20261015T193000
+DTEND;TZID=America/Chicago:20261015T235900
+DESCRIPTION:"Austin\, Texas-based singer-songwriter and former frontman of 
+	The Ugly Americans and The Scabs\, Bob Schneider is one of the most-celebr
+	ated musicians in the live music capital. Combining diverse styles\, Schne
+	ider’s music spans genres\, blending elements of folk\, rock\, rap\, funk\
+	, bluegrass\, reggae and country with the more traditional singer/songwrit
+	er aesthetic. In short\, FRUNK.  Schneider has won more than 59 Austin Mus
+	ic Awards including Best Album\, Best Songwriter\, Best Musician\, and Bes
+	t Male Vocals making him the most decorated artist in Austin’s storied mus
+	ic history.  Schneider’s fan base reaches far beyond the city limits of Au
+	stin. He started gaining national recognition with his major-label debut f
+	or Universal Records\, Lonelyland. A fiercely-independent artist\, Schneid
+	er opted to start his own label\, Shockorama Records\, which has afforded 
+	him the freedom to make the music his fans love\, on his own terms.  Schne
+	ider’s live performances\, both solo and with the band\, are legendary. A 
+	two-time performer on his hometown’s famed Austin City Limits television s
+	how\, he is also in the 20th year of his residency at The Saxon Pub. All t
+	old\, he plays over a hundred shows a year and he doesn’t plan on slowing 
+	down anytime soon."\nTicket URL: https://tickets.citywinery.com/event/bob-
+	schneider-2fblqq
+URL:https://tickets.citywinery.com/event/bob-schneider-2fblqq
+LOCATION:City Winery St. Louis\, 3730 Foundry Way\, Suite 158 (City Foundry
+	)\, St. Louis\, 63110\, US
+STATUS:CONFIRMED
+ORGANIZER;CN="City Winery":MAILTO:info@email.citywinery.com
+END:VEVENT
+END:VCALENDAR

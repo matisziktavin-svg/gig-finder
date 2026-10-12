@@ -1,0 +1,66 @@
+{
+ "events": [
+  {
+   "title": "Stanley Simmons",
+   "start_date": "2026-10-12 20:00:00",
+   "website": "https://www.etix.com/ticket/p/91429300/",
+   "url": "https://blueberryhill.com/event/stanley-simmons/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Duck Room"
+   }
+  },
+  {
+   "title": "Tuesday Trivia in the Dart Room",
+   "start_date": "2026-10-13 19:00:00",
+   "website": "https://www.facebook.com/events/8684631211641822/8684631324975144/",
+   "url": "https://blueberryhill.com/event/tuesday-trivia-in-the-dart-room-2/2026-10-13/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Dart Room"
+   }
+  },
+  {
+   "title": "THE SCHIZOPHONICS",
+   "start_date": "2026-10-13 20:00:00",
+   "website": "https://www.etix.com/ticket/p/88907138",
+   "url": "https://blueberryhill.com/event/the-schizophonics/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Duck Room"
+   }
+  },
+  {
+   "title": "Wednesday Dart League Fall Season",
+   "start_date": "2026-10-14 19:30:00",
+   "website": "https://www.blueberryhilldarts.com/index.html",
+   "url": "https://blueberryhill.com/event/wednesday-dart-league-fall-season-2/2026-10-14/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Dart Room"
+   }
+  },
+  {
+   "title": "Igor &amp; The Red Elvises",
+   "start_date": "2026-10-14 20:00:00",
+   "website": "https://www.etix.com/ticket/p/92662252/igor-and-the-red-elvises-stlouis-blueberry-hill-duck-room",
+   "url": "https://blueberryhill.com/event/igor-the-red-elvises/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Duck Room"
+   }
+  },
+  {
+   "title": "SOUNDHAUS",
+   "start_date": "2026-10-15 19:00:00",
+   "website": "",
+   "url": "https://blueberryhill.com/event/soundhaus-2/",
+   "all_day": false,
+   "venue": {
+    "venue": "Blueberry Hill Duck Room"
+   }
+  }
+ ],
+ "total": 31,
+ "total_pages": 1
+}

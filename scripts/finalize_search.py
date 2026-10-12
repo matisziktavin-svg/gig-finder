@@ -52,11 +52,17 @@ def main() -> int:
     p.add_argument("--discovery-cap", dest="discovery_cap", type=int,
                    default=ranking.DISCOVERY_LISTENER_CAP,
                    help="Max Last.fm listeners for a discovery pick (default 200000).")
+    p.add_argument("--events-file", dest="events_file",
+                   help="Read the events array from this file instead of stdin "
+                        "(scrape_calendars.py prints the path as events_file).")
     args = p.parse_args()
     df = _parse_date(args.date_from)
     dt = _parse_date(args.date_to)
 
-    raw = sys.stdin.read().strip()
+    if args.events_file:
+        raw = Path(args.events_file).read_text(encoding="utf-8").strip()
+    else:
+        raw = sys.stdin.read().strip()
     if not raw:
         print(json.dumps({"ok": False, "error": "No events on stdin"}))
         return 1
