@@ -9,6 +9,8 @@ A skill that combines deterministic Python helpers with your own web research to
 
 All commands assume the current working directory is the skill directory. Use `uv run python ...` to invoke scripts so they pick up the project's virtualenv.
 
+**find-gigs in one line:** `prepare_search.py` -> `scrape_calendars.py` -> `finalize_search.py` -> render. The scraper does all calendar fetching/extraction deterministically (a few seconds to a minute for a whole city); you only touch venues it reports as `failed`/`partial`, inline, within a short time budget (Step 4). This works the same whether you were launched inline or as a background agent — just never spawn *more* background agents for scraping.
+
 ---
 
 ## Mode dispatch
@@ -91,6 +93,8 @@ Otherwise (cache is stale or missing), do **venue discovery**:
    ```
    `events_url` is preferred (the calendar page); `url` is the venue homepage. `neighborhood` and `capacity_hint` are optional but helpful — fill if obvious from the page.
 
+   Optional per-venue scraper hints go under a `"scrape"` key (only add one if a venue's `events_url` is not the page that lists the shows, or it shares a page with another venue): `{"url": "<page to fetch instead>", "include_venues": ["Duck Room"]}` (keep only events whose source-venue label contains one of these), `{"include_locations": ["the-dark-room"]}` (EventON), `{"exclude_title": "<regex>"}`. Two venues that share one calendar page need distinct `events_url` values (e.g. add a `#fragment`) so each gets its own cache file.
+
 6. Save the list with the Write tool to `venue_cache_path` (a JSON object with `discovered_at`, `city_key`, `venues`):
    ```json
    {
@@ -100,60 +104,64 @@ Otherwise (cache is stale or missing), do **venue discovery**:
    }
    ```
 
-### Step 4 — fetch each venue's calendar (cache or extract)
+### Step 4 — scrape the calendars (script first, model only for leftovers)
 
-For each venue (cap at 20), in order:
-
-1. Determine the calendar URL (`events_url` if present, else `url`).
-
-2. Check the per-venue calendar cache:
-   ```bash
-   uv run python scripts/cache_io.py status calendar --url "<events_url>" --ttl-days 1
-   ```
-   This returns `{path, exists, age_days, stale}`. If `stale: false` → use the cached file (Read it, parse the JSON `events` array).
-
-3. If stale, fetch the calendar page and extract upcoming events as JSON.
-   - **Fetch order:** try **WebFetch** first (free). Venue sites are frequently JS-rendered (Squarespace, Dice, Bandsintown/Songkick embeds) or bot-protected, so if WebFetch returns an empty shell, a login wall, or obviously no event list, **fall back to `firecrawl_scrape`** (`formats: ["markdown"]`, `only_main_content: true`) — it renders JS and returns clean Markdown. Firecrawl costs a credit per scrape (free tier ~1000/month), so only use it when WebFetch actually fails, not by default. If the `firecrawl` MCP isn't connected, stay on WebFetch.
-   - When extracting, look first for structured data: `<script type="application/ld+json">` with `@type: MusicEvent` / `Event`, or linked iCal / RSS feeds in `<link rel>`.
-   - Otherwise, parse the visible event list / calendar.
-   - Return a JSON array of:
-     ```json
-     {
-       "date": "YYYY-MM-DD",         // required
-       "time": "HH:MM",              // optional, 24h
-       "artists": ["Headliner", ...],// required, in lineup order
-       "venue": "<venue name>",      // required (use the venue name from your list)
-       "venue_url": "<events_url>",  // for traceability
-       "ticket_url": "<deep link>"   // if a per-event ticket URL exists
-     }
-     ```
-   - Restrict to events with `date` between `date_from` and `date_to` inclusive.
-   - Skip ticket-only listings without a date or an artist.
-
-4. Save the result (even if empty) to the cache path returned in step 2:
-   ```json
-   {
-     "fetched_at": "<ISO now>",
-     "venue": "<name>",
-     "events_url": "...",
-     "events": [...]
-   }
-   ```
-
-If the venue page is bot-blocked / 403 / Cloudflare-challenged: write an empty events array to the cache (so we don't retry within 24h) and move on.
-
-### Step 5 — aggregate and filter
-
-Concatenate the `events` arrays across all venues into a single JSON list. Write it to a temp file, then pipe to `finalize_search.py`:
+Calendar scraping is **deterministic and done by a script**, not by you. It fetches every stale venue calendar concurrently, extracts events (schema.org JSON-LD, iCal feeds, The Events Calendar / EventON REST, and the specific WordPress / Webflow / ticketing markup the venues in the city lists actually use), writes the per-venue cache files, and aggregates the in-window events. A full city normally finishes in well under a minute.
 
 ```bash
-# Write the aggregated array (use the Write tool) to /tmp/gigfinder_events.json,
-# then:
-cat /tmp/gigfinder_events.json | uv run python scripts/finalize_search.py \
-  --from <date_from> --to <date_to>
+uv run python scripts/scrape_calendars.py \
+  --location "<location>" --from <date_from> --to <date_to>
 ```
 
-(Don't try to inline large JSON in `echo` / heredoc — use the Write tool to a temp file and `cat` it in.)
+Add `--force` to ignore the 24h cache (e.g. "refresh the calendars"), `--only "<venue name>"` to redo one venue. It prints one JSON summary:
+
+- `events_file` — path of the aggregated events array (default `~/.gigfinder/gigfinder_events.json`); feed this to Step 5.
+- `venues[]` — per venue `status` (`ok` | `partial` | `failed` | `cached`), `events_in_window`, `method`, `reason`, `last_event_date`.
+- `needs_llm` — the venues the script could not fully handle (`failed` = nothing usable, `partial` = a page or detail fetch broke mid-way). **This list is the only place you do any extraction work.**
+
+If `needs_llm` is empty, go straight to Step 5. Do not re-verify venues the script reported `ok` or `cached`.
+
+#### Fallback for `needs_llm` venues (optional, time-boxed)
+
+Hard rules:
+- **Inline only.** Do it yourself in this session, or with *foreground* agents you wait on. **Never launch background subagents for scraping**, and never fan venues out across agents — the script already did the parallel part, and background agents are what made earlier runs slow and flaky.
+- **Budget: about 5 minutes total** for all fallback venues, roughly 1 minute per venue. One attempt with WebFetch; if the page is an empty JS shell, one `firecrawl_scrape` (`formats: ["markdown"]`, `only_main_content: true`). No retry loops, no paging through 100K-char pages.
+- **If a venue still won't yield events inside its minute, skip it and report it** in the final answer ("Heavy Anchor — calendar is an image, not scraped"). A partial answer delivered on time beats a complete one that never arrives.
+- Read the `reason` first: `DNS lookup failed` / `http 404` mean the venue URL in the list is probably dead — say so (and offer `refresh-venues`) rather than hunting for the page. `no recognizable event data` usually means a JS-rendered or image-only calendar.
+- For `partial` venues, only fill the gap the `reason` / `last_event_date` points to, then stop.
+
+To record what you extracted, write the venue's cache file (path = `cache_path` in the summary) in the standard shape. Leave out `window_from`/`window_to` (that marks it as hand-written and trusted):
+
+```json
+{
+  "fetched_at": "<ISO now>",
+  "venue": "<venue name>",
+  "events_url": "<events_url>",
+  "events": [
+    {
+      "date": "YYYY-MM-DD",          // required
+      "time": "HH:MM",               // optional, 24h
+      "artists": ["Headliner", ...], // required, in lineup order, bare artist names
+      "venue": "<venue name>",       // required (name from the venue list)
+      "venue_url": "<events_url>",
+      "ticket_url": "<deep link>"    // if a per-event ticket URL exists
+    }
+  ]
+}
+```
+
+Only in-window events, skip anything without a date or artist. If the page is hard-blocked (403 / Cloudflare), write an empty `events` array so it isn't retried for 24h.
+
+Then **re-run the same `scrape_calendars.py` command** (no `--force`). Fresh caches are not re-fetched; it just rebuilds the aggregate `events_file` including your hand-filled venues. Don't concatenate events by hand.
+
+### Step 5 — match against taste (`finalize_search.py`)
+
+```bash
+uv run python scripts/finalize_search.py \
+  --from <date_from> --to <date_to> --events-file "<events_file from Step 4>"
+```
+
+(It also still accepts the events array on stdin.)
 
 The output JSON has `stats` and `events` (filtered, tagged, sorted). The `events` array is what to render.
 
@@ -181,6 +189,8 @@ Format as a plain markdown list, sorted as given (date ascending). Each entry:
 - If `events` is empty, say so plainly and suggest either widening the date range, refreshing venues, or refreshing the taste profile.
 
 End with a one-line summary of `stats` (e.g. "Scanned 18 venues → 47 events in window → 12 matched your taste, 5 discovery picks"). `stats` carries `tier1_count`, `tier2_count`, and `tier3_count` (discovery) separately — surface the discovery count so the user knows how many are unheard acts.
+
+If any venue ended up skipped, failed, or partial after Step 4, add one short line naming them and why (e.g. "Not covered: Heavy Anchor (calendar is a flyer image), Platypus (no listing online)"). Never silently drop a venue.
 
 ### Step 7 — offer a "Mizzix sampler" playlist
 
@@ -283,7 +293,8 @@ If the user said `refresh venues for <city>` without supplying dates, ask for th
 |---|---|---|
 | Taste profile | advisory 30 days (warns, does not force) | `~/.gigfinder/taste.json` |
 | Per-city venue list | 365 days | `~/.gigfinder/venues/<city_key>.json` |
-| Per-venue calendar | 24 hours | `~/.gigfinder/calendars/<sha256>.json` |
+| Per-venue calendar | 24 hours (and must cover the requested `--to` date; hand-written caches without `window_to` are trusted) | `~/.gigfinder/calendars/<sha256(events_url)[:16]>.json` |
+| Aggregated in-window events (output of `scrape_calendars.py`) | rebuilt every run | `~/.gigfinder/gigfinder_events.json` |
 | Geocode | forever | `~/.gigfinder/geocode.cache.json` |
 | Last.fm similar artists | 30 days | `~/.gigfinder/similar.json` |
 | Last.fm artist meta (listeners + tags, for Tier-3 discovery) | 60 days | `~/.gigfinder/artist_meta.json` |
@@ -297,5 +308,7 @@ The user can manually delete any of these to force a refresh. `refresh-venues` a
 - **No taste profile** → prompt user to run `refresh-taste` first.
 - **Geocoding returns nothing** → ask the user to specify location more precisely (e.g. "Cambridge, MA" instead of "Cambridge").
 - **Venue discovery yields fewer than 5 venues** → tell the user the city's coverage looks thin and ask if they want to provide a few venue URLs manually (which you'd add to the cache file directly).
-- **Calendar pages mostly bot-block** → tell the user honestly; offer to retry tomorrow (the 24h cache TTL prevents thrashing).
+- **Calendar pages mostly bot-block** → the scraper uses a real browser User-Agent; if many venues still come back `failed` with `http 403`, tell the user honestly and offer to retry tomorrow. If `FIRECRAWL_API_KEY` is set in the environment the scraper automatically retries unrecognized pages through the Firecrawl API; without it those venues land in `needs_llm`.
+- **A venue reports `DNS lookup failed` / `http 404`** → its URL in the venue list is stale. Say so, skip it, and suggest `refresh venues for <city>` (or fix the entry in the venue file directly).
+- **Scraper says `recognized <platform> markup but parsed 0 events`** → the venue redesigned its site; treat as `failed` and use the time-boxed fallback.
 - **No matches at all** → mention how many venues had events in the window vs. how many matched their taste; suggest widening dates or refreshing taste.

@@ -20,7 +20,7 @@ Sun 2026-06-08 · 9pm — Sports Team @ Brighton Music Hall, Allston
 Scanned 18 venues → 47 events in window → 12 matched your taste
 ```
 
-Behind the scenes: Claude does the venue discovery (web-searching for the city's indie venues) and per-venue calendar extraction. Python builds the taste profile, geocodes, expands the artist universe via Last.fm `artist.getSimilar`, and ranks the matches.
+Behind the scenes: Claude does the venue discovery (web-searching for the city's indie venues); `scripts/scrape_calendars.py` does the per-venue calendar extraction deterministically (Claude only handles the few venues it reports as failed/partial). Python builds the taste profile, geocodes, expands the artist universe via Last.fm `artist.getSimilar`, and ranks the matches.
 
 ## Why this works the way it does
 
@@ -30,7 +30,7 @@ The free indie concert APIs are essentially gone in 2026:
 - **Eventbrite** — public event search killed Feb 2020.
 - **Songkick** — closed to new public devs since ~2019.
 
-Ticketmaster's Discovery API still works but skews mainstream. So instead of relying on dead APIs, this skill uses **Claude itself** as the discovery engine: it searches for venues, fetches each venue's calendar page, and extracts events. Caching makes repeated searches in the same city fast and cheap.
+Ticketmaster's Discovery API still works but skews mainstream. So instead of relying on dead APIs, this skill uses **Claude itself** as the discovery engine: it searches for venues, hands calendar scraping to a deterministic script, and only falls back to Claude for venues the script can't parse. Caching makes repeated searches in the same city fast and cheap.
 
 ## Requirements
 
@@ -159,7 +159,7 @@ This runs `scripts/refresh_taste.py`, which mines your Last.fm + Spotify data in
 > find me gigs in Boston from June 1 to June 15
 ```
 
-The first search in a new city triggers venue discovery (Claude web-searches for indie venues, ~30 sec) and then per-venue calendar fetches (~1-2 min for 20 venues). Subsequent searches in the same city use the 365-day venue cache and 24-hour calendar cache — they finish in seconds.
+The first search in a new city triggers venue discovery (Claude web-searches for indie venues, ~30 sec) and then one concurrent calendar scrape (`scrape_calendars.py`, seconds to a minute for ~15-20 venues). Subsequent searches in the same city use the 365-day venue cache and 24-hour calendar cache — they finish in seconds.
 
 ## Usage examples
 
@@ -172,7 +172,7 @@ The first search in a new city triggers venue discovery (Claude web-searches for
 
 ## How it works (one paragraph)
 
-`refresh-taste` aggregates Last.fm top artists, top tags, loved tracks, and recent plays with Spotify likes, follows, and owned playlists into a weighted artist score. `find-gigs` runs a small Python prelude (`prepare_search.py`) to validate inputs and geocode, then hands off to Claude to find ~20 indie venues for the city (cached 365 days), fetch each venue's calendar (cached 24h), and extract events. The events are piped into `finalize_search.py`, which builds the artist universe (taste profile + Last.fm `artist.getSimilar` for the top ~30 artists), filters events to those with matching artists, tags each with the strongest signal (`Top favorite` / `Loved` / `Followed` / `Similar to X`), and sorts by date. After recommending shows, Claude can offer a **Mizzix sampler**: `build_sampler.py` takes a curated list of new-to-you artists, grabs up to 2 tracks each, and clears/refills a single rolling Spotify playlist named `Mizzix` so you can preview them before buying a ticket.
+`refresh-taste` aggregates Last.fm top artists, top tags, loved tracks, and recent plays with Spotify likes, follows, and owned playlists into a weighted artist score. `find-gigs` runs a small Python prelude (`prepare_search.py`) to validate inputs and geocode, then hands off to Claude to find ~20 indie venues for the city (cached 365 days). `scrape_calendars.py` fetches every stale venue calendar concurrently (cached 24h), extracts events (JSON-LD, iCal, Tribe/EventON REST, and venue-platform parsers in `lib/venue_parsers.py`), and writes a per-venue ok/partial/failed summary plus one aggregated events file. The events file is passed to `finalize_search.py`, which builds the artist universe (taste profile + Last.fm `artist.getSimilar` for the top ~30 artists), filters events to those with matching artists, tags each with the strongest signal (`Top favorite` / `Loved` / `Followed` / `Similar to X`), and sorts by date. After recommending shows, Claude can offer a **Mizzix sampler**: `build_sampler.py` takes a curated list of new-to-you artists, grabs up to 2 tracks each, and clears/refills a single rolling Spotify playlist named `Mizzix` so you can preview them before buying a ticket.
 
 ## Limitations (honest)
 
@@ -187,7 +187,8 @@ The first search in a new city triggers venue discovery (Claude web-searches for
 - **"No taste profile found"** — run `refresh my taste profile` first.
 - **`spotify-mcp --auth` browser shows "INVALID_REDIRECT_URI"** — the URI in your dev app dashboard doesn't match `SPOTIFY_REDIRECT_URI` in `.env`. Make them identical.
 - **`spotify_followed_artists` not in your auth scopes** — you installed upstream `verIdyia/spotify-mcp` instead of the fork, or didn't re-run `--auth` after switching. Re-run from the `matisziktavin-svg/spotify-mcp` clone.
-- **A venue's calendar returns no events** — could be bot-blocked (try opening the URL in a browser to verify). Cache will retry in 24h.
+- **A venue's calendar returns no events** — check its row in the `scrape_calendars.py` summary: `reason` says whether the URL is dead (DNS/404), bot-blocked (403), or an unrecognized/JS-only/image calendar. Cache will retry in 24h. Set `FIRECRAWL_API_KEY` in `.env` to let the scraper render JS-only pages through Firecrawl.
+- **Adding a new venue platform** — add a parser to `lib/venue_parsers.py` (pure function over saved HTML), wire its signature into `lib/venue_scrape.py::_try_page_parsers`, and add a trimmed fixture + test under `tests/`. Run tests with `uv run --with pytest python -m pytest`.
 - **Few or no matches** — your taste profile may be sparse; try `refresh my taste profile` again, then widen the date range.
 - **Want to clear caches?** Delete `~/.gigfinder/` (or specific files within: `taste.json`, `venues/<city>.json`, `calendars/`, `similar.json`).
 
@@ -199,12 +200,14 @@ gig-finder/
 ├── scripts/
 │   ├── refresh_taste.py    # mines Last.fm + Spotify
 │   ├── prepare_search.py   # validates input, geocodes
-│   ├── finalize_search.py  # filters/tags/sorts Claude-extracted events
+│   ├── scrape_calendars.py # concurrent deterministic venue-calendar scraper
+│   ├── finalize_search.py  # filters/tags/sorts the scraped events
 │   ├── build_sampler.py    # builds the rolling "Mizzix" sampler playlist
 │   └── cache_io.py         # cache path/freshness helper for SKILL.md
 └── lib/
     ├── lastfm.py / spotify.py / musicbrainz.py / geocode.py
     ├── city_key.py / cache.py / env.py / ranking.py
+    └── venue_scrape.py / venue_parsers.py  # calendar fetch + per-platform parsers
 ```
 
 ## Credits
